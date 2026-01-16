@@ -3,18 +3,42 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt 
 from olt import olt 
 
+def ho_step(state, omega, gamma, dt):
+    """
+    Damped harmonic oscillator with m=1:
+        x' = p
+        p' = -omega^2 x - 2*gamma p
 
-def ho_step(state, omega, dt):
-    # state: (..., 2) where last dim is [x, p]
+    Exact discrete-time map for the underdamped case (gamma < omega).
+    state: (..., 2) where [...,0]=x and [...,1]=p
+    omega, gamma, dt: broadcastable tensors or floats
+    """
     x, p = state[..., 0], state[..., 1]
-    c = torch.cos(omega * dt)
-    s = torch.sin(omega * dt)
 
-    x_next = c * x + (s / omega) * p
-    p_next = -omega * s * x + c * p
+    # Ensure tensors on same device/dtype
+    omega = torch.as_tensor(omega, device=state.device, dtype=state.dtype)
+    gamma = torch.as_tensor(gamma, device=state.device, dtype=state.dtype)
+    dt    = torch.as_tensor(dt,    device=state.device, dtype=state.dtype)
+
+    Omega = torch.sqrt(torch.clamp(omega**2 - gamma**2, min=0.0))  # underdamped if > 0
+    e = torch.exp(-gamma * dt)
+
+    c = torch.cos(Omega * dt)
+    s = torch.sin(Omega * dt)
+
+    # Avoid division by zero if Omega is extremely small (near critical)
+    eps = torch.tensor(1e-12, device=state.device, dtype=state.dtype)
+    Omega_safe = torch.where(Omega > eps, Omega, eps)
+
+    x_next = e * ( x * (c + (gamma / Omega_safe) * s) + p * (s / Omega_safe) )
+    p_next = e * (
+        - x * (omega**2 / Omega_safe) * s
+        + p * (c - (gamma / Omega_safe) * s)
+    )
+
     return torch.stack([x_next, p_next], dim=-1)
 
-def make_batch(B, T, omegas=[0.5,2], dt=0.1, x_scale=1.0, p_scale=1.0, device="cpu"):
+def make_batch(B, T, omegas=[0.5,2], gammas=[0.1,0.4], dt=0.1, x_scale=1.0, p_scale=1.0, device="cpu"):
     # random initial conditions
     x0 = x_scale * torch.randn(B, device=device)
     p0 = p_scale * torch.randn(B, device=device)
@@ -27,7 +51,7 @@ def make_batch(B, T, omegas=[0.5,2], dt=0.1, x_scale=1.0, p_scale=1.0, device="c
     seq = []
     for _ in range(T + 1):  # T tokens + 1 target step
         seq.append(state)
-        state = ho_step(state, omega=omegas, dt=dt)
+        state = ho_step(state, omega=omegas, gamma=gammas, dt=dt)
 
     seq = torch.stack(seq, dim=1)      # (B, T+1, 2)
     x = seq[:, :T, :]                  # (B, T, 2)
@@ -42,7 +66,7 @@ model = olt(d_model=2, d_head=2).to(device) # can try changing the number of hea
 opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.00)
 
 for iter in range(10000):
-    x_in, y = make_batch(B=256, T=T, omegas=[2.0], dt=dt, device=device)
+    x_in, y = make_batch(B=256, T=T, omegas=[2.0], gammas=[0.1], dt=dt, device=device)
     pred = model(x_in)
     loss = F.mse_loss(pred, y)
 
@@ -66,7 +90,7 @@ def rollout(model, init_seq, steps):
 
 
 steps = 200
-trajectory = make_batch(B=1, T=steps+1, omegas=[2.0], dt=dt, x_scale=10, p_scale=4, device=device)[0]
+trajectory = make_batch(B=1, T=steps+1, omegas=[2.0],gammas=[0.1], dt=dt, x_scale=10, p_scale=4, device=device)[0]
 pred_trajectory = rollout(model, trajectory[:, 0:T, :], steps)
 
 
