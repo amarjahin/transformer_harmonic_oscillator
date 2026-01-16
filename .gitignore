@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# # Jupyter and matplotlib outputs
+# *.png
+# *.pdf
+# *.svg
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
