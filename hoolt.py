@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from olt import olt
+from nlt import olt
 from ho_dynamics import make_batch
 from plotting import plot_from_checkpoint
 
