@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from nlt import olt
+from nlt import nlt
 from ho_dynamics import make_batch
 from plotting import plot_from_checkpoint
 
@@ -19,7 +19,7 @@ x_scale, p_scale = 1, 1
 
 # Training
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model = olt(d_model=d_model, d_head=d_head, n_layers=n_layers, use_mlp=use_mlp).to(device)
+model = nlt(d_model=d_model, d_head=d_head, n_layers=n_layers, use_mlp=use_mlp).to(device)
 opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.0)
 
 for iter in range(5000):

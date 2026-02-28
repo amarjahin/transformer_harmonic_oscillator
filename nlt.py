@@ -58,7 +58,7 @@ class MLP(nn.Module):
         return self.down(F.gelu(self.up(x)))
 
 
-class olt(nn.Module):
+class nlt(nn.Module):
     def __init__(self, d_model:int, d_head:int, n_layers:int, d_mlp:int=None, use_mlp:bool=True):
         super().__init__()
         self.embed = nn.Linear(2, d_model, bias=True)
