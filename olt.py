@@ -3,7 +3,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-class CausalAttention(nn.Module):
+class Attention(nn.Module):
     def __init__(self, d_model:int, d_head:int):
         super().__init__()
         if d_model % d_head != 0:
@@ -34,8 +34,8 @@ class CausalAttention(nn.Module):
         scores = (q @ k.transpose(-2, -1)) / math.sqrt(self.d_head)
 
         # Causal mask (broadcasts over B and heads)
-        mask = torch.tril(torch.ones(T, T, device=x.device, dtype=torch.bool))
-        scores = scores.masked_fill(~mask, float("-inf"))
+        # mask = torch.tril(torch.ones(T, T, device=x.device, dtype=torch.bool))
+        # scores = scores.masked_fill(~mask, float("-inf"))
 
         attn = F.softmax(scores, dim=-1)  # (B, nH, T, T)
         out = attn @ v                    # (B, nH, T, dH)
@@ -43,22 +43,66 @@ class CausalAttention(nn.Module):
         # Merge heads: (B, nH, T, dH) -> (B, T, D)
         out = out.transpose(1, 2).contiguous().view(B, T, D)
 
-        out = self.Wo(out) 
+        out = self.Wo(out)
         return out
 
 
+class MLP(nn.Module):
+    def __init__(self, d_model: int, d_mlp: int = None):
+        super().__init__()
+        d_mlp = d_mlp or 4 * d_model
+        self.up = nn.Linear(d_model, d_mlp, bias=True)
+        self.down = nn.Linear(d_mlp, d_model, bias=True)
+
+    def forward(self, x):
+        return self.down(F.gelu(self.up(x)))
+
 
 class olt(nn.Module):
-    def __init__(self, d_model:int, d_head:int):
+    def __init__(self, d_model:int, d_head:int, n_layers:int, d_mlp:int=None, use_mlp:bool=True):
         super().__init__()
         self.embed = nn.Linear(2, d_model, bias=True)
-        self.attn = CausalAttention(d_model=d_model, d_head=d_head)
+        self.use_mlp = use_mlp
+        self.blocks = nn.ModuleList()
+        for _ in range(n_layers):
+            block = nn.ModuleDict({"attn": Attention(d_model=d_model, d_head=d_head)})
+            if use_mlp:
+                block["mlp"] = MLP(d_model, d_mlp)
+            self.blocks.append(block)
         self.unembed = nn.Linear(d_model, 2, bias=True)  # last-token -> next (x,p)
 
     def forward(self, x):
         # x: (B, T, 2)
         h = self.embed(x)     # (B, T, d_model)
-
-        h = h + self.attn(h)      # (B, T, d_model)
-        y = self.unembed(h[:, -1, :])  # (B, 2)
+        for block in self.blocks:
+            h = h + block["attn"](h)
+            if self.use_mlp:
+                h = h + block["mlp"](h)
+        y = self.unembed(h)   # (B, T, 2)
         return y
+
+
+def get_attention_weights(model, x_in, layer_idx=-1):
+    """
+    Recompute attention weights from model parameters (no model modification).
+    Returns attn (B, nH, T, T) for the specified layer.
+    """
+    h = model.embed(x_in)
+    target = layer_idx if layer_idx >= 0 else len(model.blocks) + layer_idx
+    for i, block in enumerate(model.blocks):
+        if i == target:
+            attn_module = block["attn"]
+            B, T, D = h.shape
+            qkv = attn_module.Wqkv(h)
+            q, k, v = qkv.chunk(3, dim=-1)
+            q = q.view(B, T, attn_module.n_heads, attn_module.d_head).transpose(1, 2)
+            k = k.view(B, T, attn_module.n_heads, attn_module.d_head).transpose(1, 2)
+            scores = (q @ k.transpose(-2, -1)) / math.sqrt(attn_module.d_head)
+            mask = torch.tril(torch.ones(T, T, device=h.device, dtype=torch.bool))
+            scores = scores.masked_fill(~mask, float("-inf"))
+            return F.softmax(scores, dim=-1)
+        h = h + block["attn"](h)
+        if model.use_mlp:
+            h = h + block["mlp"](h)
+    return None
+
