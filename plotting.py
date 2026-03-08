@@ -1,6 +1,6 @@
 import torch
 import matplotlib.pyplot as plt
-from olt import olt
+from nlt import nlt
 from ho_dynamics import make_batch
 
 
@@ -76,7 +76,7 @@ def plot_from_checkpoint(
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dt = 0.1
 
-    model = olt(d_model=d_model, d_head=d_head, n_layers=n_layers, use_mlp=use_mlp).to(device)
+    model = nlt(d_model=d_model, d_head=d_head, n_layers=n_layers, use_mlp=use_mlp).to(device)
     model.load_state_dict(torch.load(checkpoint_path, map_location=device))
     model.eval()
 

@@ -4,16 +4,18 @@ from nlt import nlt
 from ho_dynamics import make_batch
 from plotting import plot_from_checkpoint
 
-T = 40
+T = 2
 dt = 0.1
-d_model, d_head = 32, 16
-n_layers = 8
+d_model, d_head = 2, 2
+n_layers = 1
 use_mlp = False
 checkpoint_path = "saved_models/8la_32_16_40_nc_w.pt"
 rollout_steps = 50
-omegas = [1.0,4.0]
-gammas = [0.1]
-plot_omegas = [2.0]
+# omegas = [2.0]
+omegas = [torch.linspace(2,4,2).tolist()]
+gammas = [0.0]
+# plot_omegas = [2.0]
+plot_omegas = [omegas[0][0]]
 plot_gammas = gammas
 x_scale, p_scale = 1, 1
 
@@ -22,7 +24,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 model = nlt(d_model=d_model, d_head=d_head, n_layers=n_layers, use_mlp=use_mlp).to(device)
 opt = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.0)
 
-for iter in range(5000):
+for iter in range(20000):
     x_in, y = make_batch(B=256, T=T, omegas=omegas, gammas=gammas, dt=dt, device=device, full_seq=True)
     pred = model(x_in)  # (B, T, 2)
     loss = F.mse_loss(pred, y)

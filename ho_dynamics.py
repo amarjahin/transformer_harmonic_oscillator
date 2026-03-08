@@ -42,8 +42,14 @@ def make_batch(B, T, omegas=[0.5,2], gammas=[0.1,0.4], dt=0.1, x_scale=1.0, p_sc
     state = torch.stack([x0, p0], dim=-1)  # (B, 2)
     if len(omegas) == 2:
         omegas = (omegas[1] - omegas[0]) * torch.rand(B, device=device) + omegas[0] 
-    elif len(omegas) == 1: 
-        omegas = torch.tensor(omegas[0], device=device)
+    elif len(omegas) == 1:
+        if isinstance(omegas[0], (list, tuple)):
+            # omegas=[[1,2]] or [[1,2,3]]: each of B randomly picks one value
+            candidates = torch.tensor(omegas[0], device=device, dtype=torch.float32)
+            indices = torch.randint(0, len(candidates), (B,), device=device)
+            omegas = candidates[indices]
+        else:
+            omegas = torch.tensor(omegas[0], device=device)
 
     if len(gammas) == 2:
         gammas = (gammas[1] - gammas[0]) * torch.rand(B, device=device) + gammas[0] 
